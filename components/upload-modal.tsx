@@ -51,30 +51,39 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
 
       const presignedUrlForUpload = await axios.post(
           API_URLS.getPresignedUrl,
+          {
+            userId: "user1",
+            title,
+            author,
+            description,
+            coverFile: base64Image,
+            coverType: coverFile.type,
+             // Replace with actual user ID from Cognito/Auth
+          }
       );
 
-      const {uploadUrl, fileKey, id} = presignedUrlForUpload.data.body;
+      const {uploadUrl, message} = presignedUrlForUpload.data.body;
 
       await axios.put(uploadUrl, pdfFile, {
         headers: {
           "Content-Type": "application/pdf",
         },
       });
-
-      const saveResponse = await axios.post(
-          API_URLS.booksSaveDetails,
-          {
-            id,
-            title,
-            author,
-            description,
-            fileKey,
-            coverFile: base64Image,
-            coverType: coverFile.type,
-            userId: "user1", // Replace with actual user ID from Cognito/Auth
-          }
-      );
-      console.log(saveResponse);
+      //
+      // const saveResponse = await axios.post(
+      //     API_URLS.booksSaveDetails,
+      //     {
+      //       id,
+      //       title,
+      //       author,
+      //       description,
+      //       fileKey,
+      //       coverFile: base64Image,
+      //       coverType: coverFile.type,
+      //       userId: "user1", // Replace with actual user ID from Cognito/Auth
+      //     }
+      // );
+      console.log(presignedUrlForUpload);
       // const {message} = saveResponse.data.body;
 
       setIsUploading(false)
@@ -93,7 +102,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onload = () => {
-        if (reader.result) {
+        if (typeof reader.result === "string") {
           const base64String = reader.result.split(',')[1]; // Remove the header (e.g., "data:image/png;base64,")
           resolve(base64String);
         } else {
