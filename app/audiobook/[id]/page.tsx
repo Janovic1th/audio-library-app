@@ -1,13 +1,14 @@
 "use client"
 
 import { AudioPlayer } from "@/components/audio-player"
+import { AudioNotAvailable } from "@/components/audio-not-availible"
 import { Button } from "@/components/ui/button"
 import { PDFViewer } from "@/components/pdf-viewer"
 import { useToast } from "@/hooks/use-toast"
 import { Download, Play, Trash } from "lucide-react"
 import Image from "next/image"
 import { useRouter, useParams } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useCallback } from "react"
 import axios from "axios"
 import API_URLS from "../../../utils/apiUrls"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -35,7 +36,7 @@ const mockAudiobooks = [
     description:
         "The story of racial injustice and the loss of innocence in the American South during the Great Depression.",
     coverUrl: "/placeholder.svg?height=500&width=500",
-    audioUrl: "#",
+    audioUrl: "",
     pdfUrl: "/paper.pdf",
     duration: "5h 15m",
     uploadDate: "February 10, 2023",
@@ -80,50 +81,77 @@ export default function AudiobookPage() {
   const [error, setError] = useState<string | null>(null)
 
   // Show the audio player when this page is loaded
+  // useEffect(() => {
+  //   console.log(id)
+  //   setShowPlayer(true)
+  //
+  //   // Cleanup when navigating away
+  //   return () => {
+  //     setShowPlayer(false)
+  //   }
+  // }, [])
+
+  const fetchAudiobookData = useCallback(async () => {
+    if (!id) return
+
+    try {
+      setIsLoading(true)
+      const url = API_URLS.getBook(id as string)
+      const response = await axios.get(url,{
+        params: {
+          userId: "user1",
+        },
+      })
+      if (response.status === 404) {
+        setError("The audiobook you are looking for does not exist.")
+        setIsLoading(false)
+        return
+      }
+      console.log(response)
+      const fetchedAudiobook: Audiobook = {
+        id: response.data.id,
+        userId: response.data.userId,
+        title: response.data.title,
+        author: response.data.author,
+        description: response.data.description,
+        // pdfUrl: response.data.pdfUrl, // Assuming pdfKey is part of the response
+        pdfUrl: "/paper.pdf",
+        // coverUrl: response.data.imageUrl, // Assuming imageUrl is part of the response
+        coverUrl: "/placeholder.svg?height=500&width=500",
+        audioUrl: response.data.audioUrl || "", // Assuming you get audioUrl or have a default
+        duration: formatDuration(Number(response.data.duration) || 0), // Handle duration (may need to extract from response)
+        uploadDate: response.data.uploadDate || "Unknown", // Handle upload date (may need to extract)
+      }
+
+      setAudiobook(fetchedAudiobook) // Set the audiobook data
+      setIsLoading(false)
+      setError(null)
+        if (fetchedAudiobook.audioUrl && fetchedAudiobook.audioUrl !== "#" && fetchedAudiobook.audioUrl !== "") {
+          setShowPlayer(true)
+        } else {
+          setShowPlayer(false)
+        }
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        setIsLoading(false) // Stop loading
+        setAudiobook(null) // Ensure audiobook is cleared
+        setError(null) // Clear general error state
+      } else {
+        // Handle other errors
+        setError("Failed to load audiobook. Please try again later.")
+        setIsLoading(false)
+      }
+    }
+  }, [id])
+
   useEffect(() => {
-    console.log(id)
-    setShowPlayer(true)
+    fetchAudiobookData()
 
     // Cleanup when navigating away
     return () => {
       setShowPlayer(false)
     }
-  }, [])
-
-  useEffect(() => {
-    const fetchAudiobookData = async () => {
-      if (id) {
-        try {
-          setIsLoading(true)
-          const url = API_URLS.getBook(id as string)
-          const response = await axios.get(url)
-
-          const fetchedAudiobook: Audiobook = {
-            id: response.data.id,
-            userId: response.data.userId,
-            title: response.data.title,
-            author: response.data.author,
-            description: response.data.description,
-            pdfUrl: response.data.pdfUrl, // Assuming pdfKey is part of the response
-            coverUrl: response.data.imageUrl, // Assuming imageUrl is part of the response
-            audioUrl: response.data.audioUrl || "#", // Assuming you get audioUrl or have a default
-            duration: formatDuration(Number(response.data.duration) || 0), // Handle duration (may need to extract from response)
-            uploadDate: response.data.uploadDate || "Unknown", // Handle upload date (may need to extract)
-          }
-          console.log(fetchedAudiobook)
-          setAudiobook(fetchedAudiobook) // Set the audiobook data
-          setIsLoading(false)
-          setError(null)
-        } catch (error) {
-          console.error("Error fetching audiobook data:", error)
-          setError("Failed to load audiobook. Please try again later.")
-          setIsLoading(false)
-        }
-      }
-    }
-
-    fetchAudiobookData()
-  }, [id])
+  }, [fetchAudiobookData])
 
   const formatDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600)
@@ -138,13 +166,7 @@ export default function AudiobookPage() {
   const handlePlay = () => {
     if (!audiobook) return
 
-    setIsPlaying(!isPlaying)
-
-    // This would normally update the global audio player state
-    toast({
-      title: isPlaying ? "Paused" : "Now Playing",
-      description: `${audiobook.title} by ${audiobook.author}`,
-    })
+    setIsPlaying(!isPlaying);
   }
 
   const handleDelete = () => {
@@ -160,6 +182,42 @@ export default function AudiobookPage() {
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen)
   }
+
+  const checkIfAudioAvailable = async () => {
+    if (!audiobook) return
+
+    try {
+      const response = await axios.get(API_URLS.isAudioAvailable, {
+        params: {
+          id: audiobook.id,
+          userId: audiobook.userId,
+        },
+      })
+      console.log(response);
+      const audioUrl = response.data?.body?.audioUrl;
+
+      if (audioUrl && audioUrl !== "") {
+        setAudiobook((prev) =>
+            prev ? { ...prev, audioUrl } : prev
+        );
+      }
+      setShowPlayer(true);
+    } catch (error) {
+      console.error("Error checking audio availability:", error)
+      toast({
+        title: "Error",
+        description: "Unable to check audio availability. Please try again later.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  useEffect(() => {
+    console.log("audiobook updated:", audiobook);
+  }, [audiobook]);
+
+
+  const isAudioAvailable = audiobook?.audioUrl && audiobook.audioUrl !== ""
 
   // Loading state
   if (isLoading) {
@@ -220,7 +278,14 @@ export default function AudiobookPage() {
 
   return (
       <>
-        {showPlayer && <AudioPlayer audiobook={audiobook} isPlaying={isPlaying} onPlayPause={handlePlay} />}
+        {/* Show AudioPlayer only if audio is available */}
+        {showPlayer && isAudioAvailable && (
+            <AudioPlayer audiobook={audiobook} isPlaying={isPlaying} onPlayPause={handlePlay} />
+        )}
+
+        {/* Show AudioNotAvailable if audio is not available */}
+        {!isAudioAvailable && <AudioNotAvailable bookTitle={audiobook.title} onRefresh={checkIfAudioAvailable} />}
+
 
         {isFullscreen && (
             <div className="fixed inset-0 bg-background z-50 p-4 flex flex-col animate-in fade-in zoom-in duration-300">
@@ -242,7 +307,7 @@ export default function AudiobookPage() {
               </div>
 
               <div className="space-y-2">
-                <Button onClick={handlePlay} className="w-full" size="lg">
+                <Button onClick={handlePlay} className="w-full" size="lg" disabled={!isAudioAvailable}>
                   {isPlaying ? "Pause" : "Play"}
                   {isPlaying ? null : <Play className="ml-2 h-4 w-4" />}
                 </Button>

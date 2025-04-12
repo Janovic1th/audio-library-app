@@ -33,6 +33,19 @@ export function PDFViewer({ pdfUrl, isFullscreen, onToggleFullscreen }: PDFViewe
         }
     }, [])
 
+    // This effect handles fullscreen mode body class
+    useEffect(() => {
+        if (isFullscreen) {
+            document.body.classList.add("overflow-hidden")
+        } else {
+            document.body.classList.remove("overflow-hidden")
+        }
+
+        return () => {
+            document.body.classList.remove("overflow-hidden")
+        }
+    }, [isFullscreen])
+
     return (
         <div className={`flex flex-col ${isFullscreen ? "h-full" : "h-[calc(100vh-250px)]"}`}>
             <div className="flex justify-between items-center mb-2 p-2 bg-muted/30 rounded-md">
@@ -51,7 +64,7 @@ export function PDFViewer({ pdfUrl, isFullscreen, onToggleFullscreen }: PDFViewe
                 <iframe
                     ref={iframeRef}
                     src={pdfUrl}
-                    className="w-full h-full"
+                    className="w-full h-full bg-white"
                     title="PDF Viewer"
                 />
             </div>
