@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import axios from "axios";
+import axios from "axios"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast"
 import { FileUp, Upload, BookOpen } from "lucide-react"
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import API_URLS from "@/utils/apiUrls";
+import API_URLS from "@/utils/apiUrls"
 
 interface UploadModalProps {
   isOpen: boolean
@@ -37,7 +37,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   const [imageToCrop, setImageToCrop] = useState<File | null>(null)
 
   // Refs for file inputs
-  const coverInputRef = useRef<HTMLInputElement>(null!);
+  const coverInputRef = useRef<HTMLInputElement>(null!)
   const pdfInputRef = useRef<HTMLInputElement>(null!)
 
   const { toast } = useToast()
@@ -46,64 +46,68 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsUploading(true)
-    if (coverFile) {
-      const base64Image = await convertToBase64(coverFile);
 
-      const presignedUrlForUpload = await axios.post(
-          API_URLS.getPresignedUrl,
-      );
+    try {
+      if (coverFile) {
+        const base64Image = await convertToBase64(coverFile)
 
-      const {uploadUrl, fileKey, id} = presignedUrlForUpload.data.body;
+        const presignedUrlForUpload = await axios.post(API_URLS.getPresignedUrl, {
+          userId: "user1",
+          title,
+          author,
+          description,
+          coverFile: base64Image,
+          coverType: coverFile.type,
+          // Replace with actual user ID from Cognito/Auth
+        })
 
-      await axios.put(uploadUrl, pdfFile, {
-        headers: {
-          "Content-Type": "application/pdf",
-        },
-      });
+        const { uploadUrl, id } = presignedUrlForUpload.data.body
 
-      const saveResponse = await axios.post(
-          API_URLS.booksSaveDetails,
-          {
-            id,
-            title,
-            author,
-            description,
-            fileKey,
-            coverFile: base64Image,
-            coverType: coverFile.type,
-            userId: "user1", // Replace with actual user ID from Cognito/Auth
-          }
-      );
-      console.log(saveResponse);
-      // const {message} = saveResponse.data.body;
+        await axios.put(uploadUrl, pdfFile, {
+          headers: {
+            "Content-Type": "application/pdf",
+          },
+        })
 
-      setIsUploading(false)
+        // Show success toast
+        toast({
+          title: "Upload Successful",
+          description: `"${title}" has been added to your library.`,
+        })
+
+        // Reset form and close modal
+        resetForm()
+        onClose()
+
+        // Redirect to the audiobook page with the new ID
+        router.push(`/audiobook/${id}`)
+      }
+    } catch (error) {
+      console.error("Error uploading audiobook:", error)
       toast({
-        title: "Upload Successful",
-        description: `"${title}" has been added to your library.`,
+        title: "Upload Failed",
+        description: "There was an error uploading your audiobook. Please try again.",
+        variant: "destructive",
       })
-      resetForm()
-      onClose()
-      router.push("/")
+      setIsUploading(false)
     }
   }
 
   const convertToBase64 = (file: File) => {
     return new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
+      const reader = new FileReader()
+      reader.readAsDataURL(file)
       reader.onload = () => {
-        if (reader.result) {
-          const base64String = reader.result.split(',')[1]; // Remove the header (e.g., "data:image/png;base64,")
-          resolve(base64String);
+        if (typeof reader.result === "string") {
+          const base64String = reader.result.split(",")[1] // Remove the header (e.g., "data:image/png;base64,")
+          resolve(base64String)
         } else {
-          reject("Failed to convert file to base64");
+          reject("Failed to convert file to base64")
         }
-      };
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
+      }
+      reader.onerror = (error) => reject(error)
+    })
+  }
 
   const resetForm = () => {
     setTitle("")
@@ -192,9 +196,9 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
   // Handle cropped image
   const handleCropComplete = (croppedFile: File) => {
     setCoverFile(croppedFile)
-    const sizeInMB = croppedFile.size / (1024 * 1024);
-    console.log(`File size: ${sizeInMB.toFixed(2)} MB`);
-    console.log(croppedFile);
+    const sizeInMB = croppedFile.size / (1024 * 1024)
+    console.log(`File size: ${sizeInMB.toFixed(2)} MB`)
+    console.log(croppedFile)
     setImageToCrop(null)
   }
 
@@ -219,9 +223,9 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>Add New Audiobook</DialogTitle>
+              <DialogTitle>Add New Book</DialogTitle>
               <DialogDescription>
-                Fill in the information about your audiobook and upload the necessary files.
+                Fill in the information about your Book and upload the necessary files.
               </DialogDescription>
             </DialogHeader>
 
@@ -230,7 +234,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                 <Label htmlFor="title">Title</Label>
                 <Input
                     id="title"
-                    placeholder="Enter audiobook title"
+                    placeholder="Enter Book title"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
@@ -353,7 +357,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                 ) : (
                     <>
                       <Upload className="mr-2 h-4 w-4" />
-                      Upload Audiobook
+                      Upload Book
                     </>
                 )}
               </Button>
@@ -363,5 +367,3 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
       </Dialog>
   )
 }
-
-

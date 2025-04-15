@@ -1,59 +1,180 @@
 "use client"
 
 import { AudioPlayer } from "@/components/audio-player"
+import { AudioNotAvailable } from "@/components/audio-not-availible"
 import { Button } from "@/components/ui/button"
-import { Card } from "@/components/ui/card"
+import { PDFViewer } from "@/components/pdf-viewer"
 import { useToast } from "@/hooks/use-toast"
-import { BookOpen, Download, Expand, Minimize, Play, Trash } from "lucide-react"
+import { Download, Play, Trash } from "lucide-react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
-import { useEffect, useState } from "react"
+import { useRouter, useParams } from "next/navigation"
+import { useEffect, useState, useCallback } from "react"
+import axios from "axios"
+import API_URLS from "../../../utils/apiUrls"
+import { Skeleton } from "@/components/ui/skeleton"
 
-// Mock data for the audiobook
-const mockAudiobook = {
-  id: "1",
-  title: "The Great Gatsby",
-  author: "F. Scott. Fitzgerald",
-  description:
-    "A novel about the mysterious millionaire Jay Gatsby and his obsession with the beautiful Daisy Buchanan.",
-  coverUrl: "/placeholder.svg?height=500&width=500",
-  audioUrl: "#",
-  pdfUrl: "#",
-  duration: "4h 32m",
-  uploadDate: "March 15, 2023",
+// Mock data for the audiobooks
+const mockAudiobooks = [
+  {
+    id: "1",
+    userId: "user1",
+    title: "The Great Gatsby",
+    author: "F. Scott Fitzgerald",
+    description:
+        "A novel about the mysterious millionaire Jay Gatsby and his obsession with the beautiful Daisy Buchanan.",
+    coverUrl: "/placeholder.svg?height=500&width=500",
+    audioUrl: "#",
+    pdfUrl: "/paper.pdf",
+    duration: "4h 32m",
+    uploadDate: "March 15, 2023",
+  },
+  {
+    id: "2",
+    userId: "user1",
+    title: "To Kill a Mockingbird",
+    author: "Harper Lee",
+    description:
+        "The story of racial injustice and the loss of innocence in the American South during the Great Depression.",
+    coverUrl: "/placeholder.svg?height=500&width=500",
+    audioUrl: "",
+    pdfUrl: "/paper.pdf",
+    duration: "5h 15m",
+    uploadDate: "February 10, 2023",
+  },
+  {
+    id: "3",
+    userId: "user1",
+    title: "1984",
+    author: "George Orwell",
+    description:
+        "A dystopian social science fiction novel that examines the consequences of totalitarianism, mass surveillance, and repressive regimentation.",
+    coverUrl: "/placeholder.svg?height=500&width=500",
+    audioUrl: "#",
+    pdfUrl: "/paper.pdf",
+    duration: "6h 45m",
+    uploadDate: "January 5, 2023",
+  },
+]
+
+interface Audiobook {
+  id: string
+  userId: string
+  title: string
+  author: string
+  description: string
+  audioUrl: string
+  pdfUrl: string
+  coverUrl: string
+  duration: string
+  uploadDate: string
 }
 
-export default function AudiobookPage({ params }: { params: { id: string } }) {
+export default function AudiobookPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [showPlayer, setShowPlayer] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
   const { toast } = useToast()
   const router = useRouter()
+  const { id } = useParams<{ id: string }>()
+  const [audiobook, setAudiobook] = useState<Audiobook | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Show the audio player when this page is loaded
+  // useEffect(() => {
+  //   console.log(id)
+  //   setShowPlayer(true)
+  //
+  //   // Cleanup when navigating away
+  //   return () => {
+  //     setShowPlayer(false)
+  //   }
+  // }, [])
+
+  const fetchAudiobookData = useCallback(async () => {
+    if (!id) return
+
+    try {
+      setIsLoading(true)
+      const url = API_URLS.getBook(id as string)
+      const response = await axios.get(url,{
+        params: {
+          userId: "user1",
+        },
+      })
+      if (response.status === 404) {
+        setError("The audiobook you are looking for does not exist.")
+        setIsLoading(false)
+        return
+      }
+      console.log(response)
+      const fetchedAudiobook: Audiobook = {
+        id: response.data.id,
+        userId: response.data.userId,
+        title: response.data.title,
+        author: response.data.author,
+        description: response.data.description,
+        pdfUrl: response.data.pdfUrl, // Assuming pdfKey is part of the response
+        // pdfUrl: "/paper.pdf",
+        coverUrl: response.data.imageUrl, // Assuming imageUrl is part of the response
+        // coverUrl: "/placeholder.svg?height=500&width=500",
+        audioUrl: response.data.audioUrl || "", // Assuming you get audioUrl or have a default
+        duration: formatDuration(Number(response.data.duration) || 0), // Handle duration (may need to extract from response)
+        uploadDate: response.data.uploadDate || "Unknown", // Handle upload date (may need to extract)
+      }
+
+      setAudiobook(fetchedAudiobook) // Set the audiobook data
+      setIsLoading(false)
+      setError(null)
+        if (fetchedAudiobook.audioUrl && fetchedAudiobook.audioUrl !== "#" && fetchedAudiobook.audioUrl !== "") {
+          setShowPlayer(true)
+        } else {
+          setShowPlayer(false)
+        }
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        setIsLoading(false) // Stop loading
+        setAudiobook(null) // Ensure audiobook is cleared
+        setError(null) // Clear general error state
+      } else {
+        // Handle other errors
+        setError("Failed to load audiobook. Please try again later.")
+        setIsLoading(false)
+      }
+    }
+  }, [id])
+
   useEffect(() => {
-    setShowPlayer(true)
+    fetchAudiobookData()
 
     // Cleanup when navigating away
     return () => {
       setShowPlayer(false)
     }
-  }, [])
+  }, [fetchAudiobookData])
+
+  const formatDuration = (seconds: number): string => {
+    const hours = Math.floor(seconds / 3600)
+    const minutes = Math.floor((seconds % 3600) / 60)
+
+    if (hours > 0 && minutes > 0) return `${hours}h ${minutes}m`
+    if (hours > 0) return `${hours}h`
+    if (minutes > 0) return `${minutes}m`
+    return "Less than a minute"
+  }
 
   const handlePlay = () => {
-    setIsPlaying(!isPlaying)
+    if (!audiobook) return
 
-    // This would normally update the global audio player state
-    toast({
-      title: isPlaying ? "Paused" : "Now Playing",
-      description: `${mockAudiobook.title} by ${mockAudiobook.author}`,
-    })
+    setIsPlaying(!isPlaying);
   }
 
   const handleDelete = () => {
+    if (!audiobook) return
+
     toast({
       title: "Audiobook Removed",
-      description: `"${mockAudiobook.title}" has been removed from your library.`,
+      description: `"${audiobook.title}" has been removed from your library.`,
     })
     router.push("/")
   }
@@ -62,48 +183,131 @@ export default function AudiobookPage({ params }: { params: { id: string } }) {
     setIsFullscreen(!isFullscreen)
   }
 
-  return (
-    <>
-      {showPlayer && <AudioPlayer audiobook={mockAudiobook} isPlaying={isPlaying} onPlayPause={handlePlay} />}
+  const checkIfAudioAvailable = async () => {
+    if (!audiobook) return
 
-      <div className="max-w-6xl mx-auto">
-        {isFullscreen ? (
-          <div className="fixed inset-0 bg-background z-50 p-4 flex flex-col animate-in fade-in zoom-in duration-300">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">{mockAudiobook.title} - PDF Content</h2>
-              <Button variant="outline" size="icon" onClick={toggleFullscreen}>
-                <Minimize className="h-4 w-4" />
-                <span className="sr-only">Exit Fullscreen</span>
-              </Button>
-            </div>
-            <div className="flex-1 border-2 border-dashed rounded-lg overflow-auto">
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center p-6">
-                  <BookOpen className="h-24 w-24 text-muted-foreground mx-auto mb-4" />
-                  <h3 className="text-2xl font-medium">PDF Viewer (Fullscreen)</h3>
-                  <p className="text-muted-foreground max-w-lg mx-auto">
-                    This is where the PDF content would be displayed in fullscreen mode. In a real application, this
-                    would use a PDF viewer library to render the document.
-                  </p>
-                </div>
+    try {
+      const response = await axios.get(API_URLS.isAudioAvailable, {
+        params: {
+          id: audiobook.id,
+          userId: audiobook.userId,
+        },
+      })
+      console.log(response);
+      const audioUrl = response.data?.body?.audioUrl;
+
+      if (audioUrl && audioUrl !== "") {
+        setAudiobook((prev) =>
+            prev ? { ...prev, audioUrl } : prev
+        );
+      }
+      setShowPlayer(true);
+    } catch (error) {
+      console.error("Error checking audio availability:", error)
+      toast({
+        title: "Error",
+        description: "Unable to check audio availability. Please try again later.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  useEffect(() => {
+    console.log("audiobook updated:", audiobook);
+  }, [audiobook]);
+
+
+  const isAudioAvailable = audiobook?.audioUrl && audiobook.audioUrl !== ""
+
+  // Loading state
+  if (isLoading) {
+    return (
+        <div className="max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-[300px_1fr] gap-6">
+            <div className="space-y-4">
+              <Skeleton className="aspect-square w-full rounded-lg" />
+              <Skeleton className="h-10 w-full" />
+              <div className="grid grid-cols-2 gap-2">
+                <Skeleton className="h-10" />
+                <Skeleton className="h-10" />
               </div>
+              <div>
+                <Skeleton className="h-8 w-3/4 mb-2" />
+                <Skeleton className="h-6 w-1/2" />
+              </div>
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-4 w-24" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+              <Skeleton className="h-20 w-full" />
+            </div>
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-[calc(100vh-250px)] w-full rounded-lg" />
             </div>
           </div>
-        ) : (
+        </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+        <div className="max-w-6xl mx-auto">
+          <div className="p-8 text-center">
+            <h2 className="text-2xl font-bold text-destructive mb-4">Error Loading Audiobook</h2>
+            <p className="text-muted-foreground mb-6">{error}</p>
+            <Button onClick={() => router.push("/")}>Return to Library</Button>
+          </div>
+        </div>
+    )
+  }
+
+  // If no audiobook data is available after loading
+  if (!audiobook) {
+    return (
+        <div className="max-w-6xl mx-auto">
+          <div className="p-8 text-center">
+            <h2 className="text-2xl font-bold mb-4">Audiobook Not Found</h2>
+            <p className="text-muted-foreground mb-6">The audiobook you're looking for could not be found.</p>
+            <Button onClick={() => router.push("/")}>Return to Library</Button>
+          </div>
+        </div>
+    )
+  }
+
+  return (
+      <>
+        {/* Show AudioPlayer only if audio is available */}
+        {showPlayer && isAudioAvailable && (
+            <AudioPlayer audiobook={audiobook} isPlaying={isPlaying} onPlayPause={handlePlay} />
+        )}
+
+        {/* Show AudioNotAvailable if audio is not available */}
+        {!isAudioAvailable && <AudioNotAvailable bookTitle={audiobook.title} onRefresh={checkIfAudioAvailable} />}
+
+
+        {isFullscreen && (
+            <div className="fixed inset-0 bg-background z-50 p-4 flex flex-col animate-in fade-in zoom-in duration-300">
+              <PDFViewer pdfUrl={audiobook.pdfUrl} isFullscreen={true} onToggleFullscreen={toggleFullscreen} />
+            </div>
+        )}
+
+        <div className="max-w-6xl mx-auto">
           <div className="grid md:grid-cols-[300px_1fr] gap-6">
             <div className="space-y-4">
               <div className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
                 <Image
-                  src={mockAudiobook.coverUrl || "/placeholder.svg"}
-                  alt={mockAudiobook.title}
-                  fill
-                  className="object-cover"
-                  priority
+                    src={audiobook.coverUrl || "/placeholder.svg"}
+                    alt={audiobook.title}
+                    fill
+                    className="object-cover"
+                    priority
                 />
               </div>
 
               <div className="space-y-2">
-                <Button onClick={handlePlay} className="w-full" size="lg">
+                <Button onClick={handlePlay} className="w-full" size="lg" disabled={!isAudioAvailable}>
                   {isPlaying ? "Pause" : "Play"}
                   {isPlaying ? null : <Play className="ml-2 h-4 w-4" />}
                 </Button>
@@ -121,44 +325,26 @@ export default function AudiobookPage({ params }: { params: { id: string } }) {
               </div>
 
               <div>
-                <h1 className="text-2xl font-bold">{mockAudiobook.title}</h1>
-                <p className="text-lg text-muted-foreground">by {mockAudiobook.author}</p>
+                <h1 className="text-2xl font-bold">{audiobook.title}</h1>
+                <p className="text-lg text-muted-foreground">by {audiobook.author}</p>
               </div>
 
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                <div>Duration: {mockAudiobook.duration}</div>
-                <div>Added: {mockAudiobook.uploadDate}</div>
+                <div>Duration: {audiobook.duration}</div>
+                <div>Added: {audiobook.uploadDate}</div>
               </div>
 
-              <p className="text-muted-foreground">{mockAudiobook.description}</p>
+              <p className="text-muted-foreground">{audiobook.description}</p>
             </div>
 
             <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-bold">PDF Content</h2>
-                <Button variant="outline" onClick={toggleFullscreen}>
-                  <Expand className="mr-2 h-4 w-4" />
-                  Fullscreen
-                </Button>
-              </div>
-
-              <Card className="p-4 h-[calc(100vh-250px)] overflow-y-auto">
-                <div className="flex items-center justify-center h-full border-2 border-dashed rounded-lg">
-                  <div className="text-center p-6">
-                    <BookOpen className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-                    <h3 className="text-xl font-medium">PDF Viewer</h3>
-                    <p className="text-sm text-muted-foreground max-w-md">
-                      This is where the PDF content would be displayed. In a real application, this would use a PDF
-                      viewer library to render the document.
-                    </p>
-                  </div>
-                </div>
-              </Card>
+              <h2 className="text-xl font-bold">PDF Content</h2>
+              {!isFullscreen && (
+                  <PDFViewer pdfUrl={audiobook.pdfUrl} isFullscreen={false} onToggleFullscreen={toggleFullscreen} />
+              )}
             </div>
           </div>
-        )}
-      </div>
-    </>
+        </div>
+      </>
   )
 }
-
