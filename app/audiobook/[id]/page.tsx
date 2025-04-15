@@ -114,10 +114,10 @@ export default function AudiobookPage() {
         title: response.data.title,
         author: response.data.author,
         description: response.data.description,
-        // pdfUrl: response.data.pdfUrl, // Assuming pdfKey is part of the response
-        pdfUrl: "/paper.pdf",
-        // coverUrl: response.data.imageUrl, // Assuming imageUrl is part of the response
-        coverUrl: "/placeholder.svg?height=500&width=500",
+        pdfUrl: response.data.pdfUrl, // Assuming pdfKey is part of the response
+        // pdfUrl: "/paper.pdf",
+        coverUrl: response.data.imageUrl, // Assuming imageUrl is part of the response
+        // coverUrl: "/placeholder.svg?height=500&width=500",
         audioUrl: response.data.audioUrl || "", // Assuming you get audioUrl or have a default
         duration: formatDuration(Number(response.data.duration) || 0), // Handle duration (may need to extract from response)
         uploadDate: response.data.uploadDate || "Unknown", // Handle upload date (may need to extract)

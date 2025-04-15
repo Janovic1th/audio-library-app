@@ -223,9 +223,9 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <form onSubmit={handleSubmit}>
             <DialogHeader>
-              <DialogTitle>Add New Audiobook</DialogTitle>
+              <DialogTitle>Add New Book</DialogTitle>
               <DialogDescription>
-                Fill in the information about your audiobook and upload the necessary files.
+                Fill in the information about your Book and upload the necessary files.
               </DialogDescription>
             </DialogHeader>
 
@@ -234,7 +234,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                 <Label htmlFor="title">Title</Label>
                 <Input
                     id="title"
-                    placeholder="Enter audiobook title"
+                    placeholder="Enter Book title"
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     required
@@ -357,7 +357,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
                 ) : (
                     <>
                       <Upload className="mr-2 h-4 w-4" />
-                      Upload Audiobook
+                      Upload Book
                     </>
                 )}
               </Button>

@@ -16,7 +16,7 @@ export default function Home() {
         <h1 className="text-3xl font-bold tracking-tight">Your Audiobook Library</h1>
         <Button onClick={() => setIsUploadModalOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
-          Add Audiobook
+          Add Book
         </Button>
       </div>
       <SearchBar />
