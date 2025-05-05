@@ -5,56 +5,23 @@ import { AudioNotAvailable } from "@/components/audio-not-availible"
 import { Button } from "@/components/ui/button"
 import { PDFViewer } from "@/components/pdf-viewer"
 import { useToast } from "@/hooks/use-toast"
-import { Download, Play, Trash } from "lucide-react"
+import { Download, Play, Trash, LogIn, AlertTriangle } from "lucide-react"
 import Image from "next/image"
 import { useRouter, useParams } from "next/navigation"
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import axios from "axios"
 import API_URLS from "../../../utils/apiUrls"
 import { Skeleton } from "@/components/ui/skeleton"
-
-// Mock data for the audiobooks
-const mockAudiobooks = [
-  {
-    id: "1",
-    userId: "user1",
-    title: "The Great Gatsby",
-    author: "F. Scott Fitzgerald",
-    description:
-        "A novel about the mysterious millionaire Jay Gatsby and his obsession with the beautiful Daisy Buchanan.",
-    coverUrl: "/placeholder.svg?height=500&width=500",
-    audioUrl: "#",
-    pdfUrl: "/paper.pdf",
-    duration: "4h 32m",
-    uploadDate: "March 15, 2023",
-  },
-  {
-    id: "2",
-    userId: "user1",
-    title: "To Kill a Mockingbird",
-    author: "Harper Lee",
-    description:
-        "The story of racial injustice and the loss of innocence in the American South during the Great Depression.",
-    coverUrl: "/placeholder.svg?height=500&width=500",
-    audioUrl: "",
-    pdfUrl: "/paper.pdf",
-    duration: "5h 15m",
-    uploadDate: "February 10, 2023",
-  },
-  {
-    id: "3",
-    userId: "user1",
-    title: "1984",
-    author: "George Orwell",
-    description:
-        "A dystopian social science fiction novel that examines the consequences of totalitarianism, mass surveillance, and repressive regimentation.",
-    coverUrl: "/placeholder.svg?height=500&width=500",
-    audioUrl: "#",
-    pdfUrl: "/paper.pdf",
-    duration: "6h 45m",
-    uploadDate: "January 5, 2023",
-  },
-]
+import { useAuth } from "react-oidc-context"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 
 interface Audiobook {
   id: string
@@ -73,23 +40,16 @@ export default function AudiobookPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [showPlayer, setShowPlayer] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
   const [audiobook, setAudiobook] = useState<Audiobook | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // Show the audio player when this page is loaded
-  // useEffect(() => {
-  //   console.log(id)
-  //   setShowPlayer(true)
-  //
-  //   // Cleanup when navigating away
-  //   return () => {
-  //     setShowPlayer(false)
-  //   }
-  // }, [])
+  const contentRef = useRef<HTMLDivElement>(null)
+  const auth = useAuth()
 
   const fetchAudiobookData = useCallback(async () => {
     if (!id) return
@@ -97,9 +57,13 @@ export default function AudiobookPage() {
     try {
       setIsLoading(true)
       const url = API_URLS.getBook(id as string)
-      const response = await axios.get(url,{
+
+      // Get user ID from auth context
+      const userId = auth.user?.profile.sub || auth.user?.profile.email || "anonymous"
+
+      const response = await axios.get(url, {
         params: {
-          userId: "user1",
+          userId, // Use the authenticated user's ID
         },
       })
       if (response.status === 404) {
@@ -114,44 +78,52 @@ export default function AudiobookPage() {
         title: response.data.title,
         author: response.data.author,
         description: response.data.description,
-        pdfUrl: response.data.pdfUrl, // Assuming pdfKey is part of the response
-        // pdfUrl: "/paper.pdf",
-        coverUrl: response.data.imageUrl, // Assuming imageUrl is part of the response
-        // coverUrl: "/placeholder.svg?height=500&width=500",
-        audioUrl: response.data.audioUrl || "", // Assuming you get audioUrl or have a default
-        duration: formatDuration(Number(response.data.duration) || 0), // Handle duration (may need to extract from response)
-        uploadDate: response.data.uploadDate || "Unknown", // Handle upload date (may need to extract)
+        pdfUrl: response.data.pdfUrl,
+        coverUrl: response.data.imageUrl,
+        audioUrl: response.data.audioUrl || "",
+        duration: formatDuration(Number(response.data.duration) || 0),
+        uploadDate: response.data.uploadDate || "Unknown",
       }
 
-      setAudiobook(fetchedAudiobook) // Set the audiobook data
+      setAudiobook(fetchedAudiobook)
       setIsLoading(false)
       setError(null)
-        if (fetchedAudiobook.audioUrl && fetchedAudiobook.audioUrl !== "#" && fetchedAudiobook.audioUrl !== "") {
-          setShowPlayer(true)
-        } else {
-          setShowPlayer(false)
-        }
+      if (fetchedAudiobook.audioUrl && fetchedAudiobook.audioUrl !== "#" && fetchedAudiobook.audioUrl !== "") {
+        setShowPlayer(true)
+      } else {
+        setShowPlayer(false)
+      }
     } catch (error) {
       if (axios.isAxiosError(error) && error.response?.status === 404) {
-        setIsLoading(false) // Stop loading
-        setAudiobook(null) // Ensure audiobook is cleared
-        setError(null) // Clear general error state
+        setIsLoading(false)
+        setAudiobook(null)
+        setError(null)
       } else {
-        // Handle other errors
         setError("Failed to load audiobook. Please try again later.")
         setIsLoading(false)
       }
     }
-  }, [id])
+  }, [id, auth.user])
 
   useEffect(() => {
     fetchAudiobookData()
 
-    // Cleanup when navigating away
     return () => {
       setShowPlayer(false)
     }
-  }, [fetchAudiobookData])
+  }, [fetchAudiobookData, auth.user])
+
+  // Add padding to the bottom of the content when player is visible
+  useEffect(() => {
+    if (contentRef.current) {
+      if (showPlayer) {
+        // Add padding based on screen size
+        contentRef.current.style.paddingBottom = window.innerWidth < 768 ? "160px" : "80px"
+      } else {
+        contentRef.current.style.paddingBottom = "0"
+      }
+    }
+  }, [showPlayer])
 
   const formatDuration = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600)
@@ -166,17 +138,55 @@ export default function AudiobookPage() {
   const handlePlay = () => {
     if (!audiobook) return
 
-    setIsPlaying(!isPlaying);
+    setIsPlaying(!isPlaying)
   }
 
-  const handleDelete = () => {
+  const openDeleteDialog = () => {
+    setIsDeleteDialogOpen(true)
+  }
+
+  const closeDeleteDialog = () => {
+    setIsDeleteDialogOpen(false)
+  }
+
+  const handleDelete = async () => {
     if (!audiobook) return
 
-    toast({
-      title: "Audiobook Removed",
-      description: `"${audiobook.title}" has been removed from your library.`,
-    })
-    router.push("/")
+    setIsDeleting(true)
+    try {
+      // Get user ID from auth context
+      const userId = auth.user?.profile.sub || auth.user?.profile.email || "anonymous"
+
+      // Call API to delete the audiobook
+      const response = await axios.delete(API_URLS.booksDelete, {
+        data: {
+          id: audiobook.id,
+          fileKey: audiobook.pdfUrl,
+          coverKey: audiobook.coverUrl,
+          audioKey: audiobook.audioUrl // optional
+        },
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      toast({
+        title: "Audiobook Removed",
+        description: `"${audiobook.title}" has been removed from your library.`,
+      })
+
+      closeDeleteDialog()
+      router.push("/")
+    } catch (error) {
+      console.error("Error deleting audiobook:", error)
+      toast({
+        title: "Error",
+        description: "There was an error removing the audiobook. Please try again.",
+        variant: "destructive",
+      })
+      setIsDeleting(false)
+      closeDeleteDialog()
+    }
   }
 
   const toggleFullscreen = () => {
@@ -187,21 +197,22 @@ export default function AudiobookPage() {
     if (!audiobook) return
 
     try {
+      // Get user ID from auth context
+      const userId = auth.user?.profile.sub || auth.user?.profile.email || "anonymous"
+
       const response = await axios.get(API_URLS.isAudioAvailable, {
         params: {
           id: audiobook.id,
-          userId: audiobook.userId,
+          userId, // Use the authenticated user's ID
         },
       })
-      console.log(response);
-      const audioUrl = response.data?.body?.audioUrl;
+      console.log(response)
+      const audioUrl = response.data?.body?.audioUrl
 
       if (audioUrl && audioUrl !== "") {
-        setAudiobook((prev) =>
-            prev ? { ...prev, audioUrl } : prev
-        );
+        setAudiobook((prev) => (prev ? { ...prev, audioUrl } : prev))
       }
-      setShowPlayer(true);
+      setShowPlayer(true)
     } catch (error) {
       console.error("Error checking audio availability:", error)
       toast({
@@ -212,10 +223,9 @@ export default function AudiobookPage() {
     }
   }
 
-  useEffect(() => {
-    console.log("audiobook updated:", audiobook);
-  }, [audiobook]);
-
+  const handleLogin = () => {
+    auth.signinRedirect()
+  }
 
   const isAudioAvailable = audiobook?.audioUrl && audiobook.audioUrl !== ""
 
@@ -276,8 +286,95 @@ export default function AudiobookPage() {
     )
   }
 
+  // Not logged in state - show limited content and login prompt
+  if (!auth.isAuthenticated) {
+    return (
+        <div className="max-w-6xl mx-auto">
+          <div className="grid md:grid-cols-[300px_1fr] gap-6">
+            <div className="space-y-4">
+              <div className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
+                <Image
+                    src={audiobook.coverUrl || "/placeholder.svg"}
+                    alt={audiobook.title}
+                    fill
+                    className="object-cover"
+                    priority
+                />
+              </div>
+
+              <div>
+                <h1 className="text-2xl font-bold">{audiobook.title}</h1>
+                <p className="text-lg text-muted-foreground">by {audiobook.author}</p>
+              </div>
+
+              <p className="text-muted-foreground line-clamp-4">{audiobook.description}</p>
+            </div>
+
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Authentication Required</CardTitle>
+                  <CardDescription>
+                    You need to be logged in to access the full content of this audiobook.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-muted-foreground mb-4">Please log in to enjoy the following features:</p>
+                  <ul className="list-disc list-inside space-y-2 text-muted-foreground mb-4">
+                    <li>Listen to the audiobook</li>
+                    <li>View the PDF content</li>
+                    <li>Download the audiobook</li>
+                    <li>Add books to your personal library</li>
+                  </ul>
+                </CardContent>
+                <CardFooter>
+                  <Button onClick={handleLogin} className="w-full">
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Log in to Access Content
+                  </Button>
+                </CardFooter>
+              </Card>
+
+              <div className="bg-muted/30 rounded-lg p-6 flex items-center justify-center h-[calc(100vh-450px)]">
+                <div className="text-center">
+                  <p className="text-muted-foreground mb-2">PDF content preview not available</p>
+                  <Button variant="outline" onClick={handleLogin}>
+                    Log in to View
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+    )
+  }
+
+  // Logged in state - show full content
   return (
       <>
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-[425px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Confirm Deletion
+              </DialogTitle>
+              <DialogDescription>
+                Are you sure you want to remove "{audiobook.title}" from your library? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>
+                Cancel
+              </Button>
+              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                {isDeleting ? "Removing..." : "Yes, Remove"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
         {/* Show AudioPlayer only if audio is available */}
         {showPlayer && isAudioAvailable && (
             <AudioPlayer audiobook={audiobook} isPlaying={isPlaying} onPlayPause={handlePlay} />
@@ -286,14 +383,13 @@ export default function AudiobookPage() {
         {/* Show AudioNotAvailable if audio is not available */}
         {!isAudioAvailable && <AudioNotAvailable bookTitle={audiobook.title} onRefresh={checkIfAudioAvailable} />}
 
-
         {isFullscreen && (
             <div className="fixed inset-0 bg-background z-50 p-4 flex flex-col animate-in fade-in zoom-in duration-300">
               <PDFViewer pdfUrl={audiobook.pdfUrl} isFullscreen={true} onToggleFullscreen={toggleFullscreen} />
             </div>
         )}
 
-        <div className="max-w-6xl mx-auto">
+        <div ref={contentRef} className="max-w-6xl mx-auto">
           <div className="grid md:grid-cols-[300px_1fr] gap-6">
             <div className="space-y-4">
               <div className="relative aspect-square overflow-hidden rounded-lg border bg-muted">
@@ -313,14 +409,17 @@ export default function AudiobookPage() {
                 </Button>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline">
+                  <Button variant="outline" disabled={!isAudioAvailable}>
                     <Download className="mr-2 h-4 w-4" />
                     Download
                   </Button>
-                  <Button variant="destructive" onClick={handleDelete}>
-                    <Trash className="mr-2 h-4 w-4" />
-                    Remove
-                  </Button>
+                  {/* Only show delete button if the user is the owner */}
+                  {audiobook.userId === auth.user?.profile.sub && (
+                      <Button variant="destructive" onClick={openDeleteDialog}>
+                        <Trash className="mr-2 h-4 w-4" />
+                        Remove
+                      </Button>
+                  )}
                 </div>
               </div>
 

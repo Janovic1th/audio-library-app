@@ -1,10 +1,15 @@
 import type React from "react"
 import ClientLayout from "./client-layout"
+import { Providers } from "./providers"
 
 export default function RootLayout({
-                                     children,
+                                       children,
                                    }: Readonly<{
-  children: React.ReactNode
+    children: React.ReactNode
 }>) {
-  return <ClientLayout>{children}</ClientLayout>
+    return (
+        <Providers>
+            <ClientLayout>{children}</ClientLayout>
+        </Providers>
+    )
 }

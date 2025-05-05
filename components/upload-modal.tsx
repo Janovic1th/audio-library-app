@@ -20,13 +20,15 @@ import { FileUp, Upload, BookOpen } from "lucide-react"
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
 import API_URLS from "@/utils/apiUrls"
+import { useAuth } from "react-oidc-context"
 
 interface UploadModalProps {
   isOpen: boolean
   onClose: () => void
+  onSuccess?: () => void
 }
 
-export function UploadModal({ isOpen, onClose }: UploadModalProps) {
+export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
   const [title, setTitle] = useState("")
   const [author, setAuthor] = useState("")
   const [description, setDescription] = useState("")
@@ -42,6 +44,7 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
 
   const { toast } = useToast()
   const router = useRouter()
+  const auth = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,14 +54,16 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
       if (coverFile) {
         const base64Image = await convertToBase64(coverFile)
 
+        // Get user ID from auth context
+        const userId = auth.user?.profile.sub || "anonymous"
+
         const presignedUrlForUpload = await axios.post(API_URLS.getPresignedUrl, {
-          userId: "user1",
+          userId, // Use the authenticated user's ID
           title,
           author,
           description,
           coverFile: base64Image,
           coverType: coverFile.type,
-          // Replace with actual user ID from Cognito/Auth
         })
 
         const { uploadUrl, id } = presignedUrlForUpload.data.body
@@ -75,9 +80,15 @@ export function UploadModal({ isOpen, onClose }: UploadModalProps) {
           description: `"${title}" has been added to your library.`,
         })
 
-        // Reset form and close modal
+        // Reset form
         resetForm()
-        onClose()
+
+        // Call onSuccess callback if provided
+        if (onSuccess) {
+          onSuccess()
+        } else {
+          onClose()
+        }
 
         // Redirect to the audiobook page with the new ID
         router.push(`/audiobook/${id}`)
