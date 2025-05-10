@@ -10,7 +10,7 @@ import Image from "next/image"
 import { useRouter, useParams } from "next/navigation"
 import { useEffect, useState, useCallback, useRef } from "react"
 import axios from "axios"
-import API_URLS from "../../../utils/apiUrls"
+import { API_URLS, LinksToServices } from "@/utils/apiUrls"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useAuth } from "react-oidc-context"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useDeleteAudiobook } from "@/hooks/use-delete-audiobook"
 
 interface Audiobook {
   id: string
@@ -40,8 +41,6 @@ export default function AudiobookPage() {
   const [isPlaying, setIsPlaying] = useState(false)
   const [showPlayer, setShowPlayer] = useState(false)
   const [isFullscreen, setIsFullscreen] = useState(false)
-  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
-  const [isDeleting, setIsDeleting] = useState(false)
   const { toast } = useToast()
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
@@ -50,6 +49,20 @@ export default function AudiobookPage() {
   const [error, setError] = useState<string | null>(null)
   const contentRef = useRef<HTMLDivElement>(null)
   const auth = useAuth()
+
+  // Use the delete audiobook hook
+  const { isDeleteDialogOpen, isDeleting, bookToDelete, openDeleteDialog, closeDeleteDialog, confirmDelete } =
+      useDeleteAudiobook({
+        redirectPath: "/",
+        redirectDelay: 2000, // 2 seconds delay before redirecting
+        afterRedirect: () => {
+          // This will be called after the redirect
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem("refetchAudiobooks", "true")
+          }
+        },
+      })
+
 
   const fetchAudiobookData = useCallback(async () => {
     if (!id) return
@@ -71,16 +84,16 @@ export default function AudiobookPage() {
         setIsLoading(false)
         return
       }
-      console.log(response)
+
       const fetchedAudiobook: Audiobook = {
         id: response.data.id,
         userId: response.data.userId,
         title: response.data.title,
         author: response.data.author,
         description: response.data.description,
-        pdfUrl: response.data.pdfUrl,
-        coverUrl: response.data.imageUrl,
-        audioUrl: response.data.audioUrl || "",
+        pdfUrl: LinksToServices.CloudFrontBook + response.data.pdfUrl,
+        coverUrl: LinksToServices.CloudFrontCover + response.data.imageUrl,
+        audioUrl: response.data.audioUrl ? LinksToServices.CloudFrontBook + response.data.audioUrl : "",
         duration: formatDuration(Number(response.data.duration) || 0),
         uploadDate: response.data.uploadDate || "Unknown",
       }
@@ -141,51 +154,9 @@ export default function AudiobookPage() {
     setIsPlaying(!isPlaying)
   }
 
-  const openDeleteDialog = () => {
-    setIsDeleteDialogOpen(true)
-  }
-
-  const closeDeleteDialog = () => {
-    setIsDeleteDialogOpen(false)
-  }
-
-  const handleDelete = async () => {
-    if (!audiobook) return
-
-    setIsDeleting(true)
-    try {
-      // Get user ID from auth context
-      const userId = auth.user?.profile.sub || auth.user?.profile.email || "anonymous"
-
-      // Call API to delete the audiobook
-      const response = await axios.delete(API_URLS.booksDelete, {
-        data: {
-          id: audiobook.id,
-          fileKey: audiobook.pdfUrl,
-          coverKey: audiobook.coverUrl,
-          audioKey: audiobook.audioUrl // optional
-        },
-        headers: {
-          "Content-Type": "application/json",
-        },
-      });
-
-      toast({
-        title: "Audiobook Removed",
-        description: `"${audiobook.title}" has been removed from your library.`,
-      })
-
-      closeDeleteDialog()
-      router.push("/")
-    } catch (error) {
-      console.error("Error deleting audiobook:", error)
-      toast({
-        title: "Error",
-        description: "There was an error removing the audiobook. Please try again.",
-        variant: "destructive",
-      })
-      setIsDeleting(false)
-      closeDeleteDialog()
+  const handleDeleteClick = () => {
+    if (audiobook) {
+      openDeleteDialog(audiobook)
     }
   }
 
@@ -195,19 +166,30 @@ export default function AudiobookPage() {
 
   const checkIfAudioAvailable = async () => {
     if (!audiobook) return
-
+    if (!auth.isAuthenticated || !auth.user?.id_token) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be logged in to delete audiobooks.",
+        variant: "destructive",
+      })
+      return
+    }
     try {
       // Get user ID from auth context
       const userId = auth.user?.profile.sub || auth.user?.profile.email || "anonymous"
-
+      const token = auth.user.id_token
       const response = await axios.get(API_URLS.isAudioAvailable, {
         params: {
           id: audiobook.id,
           userId, // Use the authenticated user's ID
         },
-      })
-      console.log(response)
-      const audioUrl = response.data?.body?.audioUrl
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const audioUrl = LinksToServices.CloudFrontBook + response.data?.body?.audioUrl
 
       if (audioUrl && audioUrl !== "") {
         setAudiobook((prev) => (prev ? { ...prev, audioUrl } : prev))
@@ -353,7 +335,7 @@ export default function AudiobookPage() {
   return (
       <>
         {/* Delete Confirmation Dialog */}
-        <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <Dialog open={isDeleteDialogOpen} onOpenChange={closeDeleteDialog}>
           <DialogContent className="sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -361,14 +343,14 @@ export default function AudiobookPage() {
                 Confirm Deletion
               </DialogTitle>
               <DialogDescription>
-                Are you sure you want to remove "{audiobook.title}" from your library? This action cannot be undone.
+                Are you sure you want to remove "{bookToDelete?.title}" from your library? This action cannot be undone.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter className="gap-2 sm:gap-0">
               <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>
                 Cancel
               </Button>
-              <Button variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting}>
                 {isDeleting ? "Removing..." : "Yes, Remove"}
               </Button>
             </DialogFooter>
@@ -409,13 +391,16 @@ export default function AudiobookPage() {
                 </Button>
 
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" disabled={!isAudioAvailable}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download
-                  </Button>
+                  <a href={audiobook.audioUrl} download target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" disabled={!isAudioAvailable}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </Button>
+                  </a>
+
                   {/* Only show delete button if the user is the owner */}
                   {audiobook.userId === auth.user?.profile.sub && (
-                      <Button variant="destructive" onClick={openDeleteDialog}>
+                      <Button variant="destructive" onClick={handleDeleteClick}>
                         <Trash className="mr-2 h-4 w-4" />
                         Remove
                       </Button>

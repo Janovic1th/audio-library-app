@@ -5,27 +5,22 @@ import { SearchBar } from "@/components/search-bar"
 import { Button } from "@/components/ui/button"
 import { UploadModal } from "@/components/upload-modal"
 import { LoginRequiredModal } from "@/components/login-required-modal"
-import { Plus } from "lucide-react"
-import { useState } from "react"
+import { Plus, AlertTriangle } from "lucide-react"
+import { useState, useEffect } from "react"
 import { useAuth } from "react-oidc-context"
 import axios from "axios"
-import API_URLS from "@/utils/apiUrls"
+import { API_URLS, LinksToServices } from "@/utils/apiUrls"
 import { useToast } from "@/hooks/use-toast"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-
-// Define the audiobook type
-export interface Audiobook {
-    id: string
-    title: string
-    author: string
-    coverUrl: string
-    description?: string
-    audioUrl?: string
-    pdfUrl?: string
-    duration?: string
-    uploadDate?: string
-    userId?: string
-}
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { useDeleteAudiobook, type Audiobook } from "@/hooks/use-delete-audiobook"
 
 export default function Home() {
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
@@ -55,10 +50,10 @@ export default function Home() {
             id: book.id,
             title: book.title,
             author: book.author,
-            coverUrl: book.imageUrl || book.coverUrl || "/placeholder.svg?height=300&width=300",
+            coverUrl: LinksToServices.CloudFrontCover + book.imageUrl || "/placeholder.svg?height=300&width=300",
             description: book.description || "",
-            audioUrl: book.audioUrl || "",
-            pdfUrl: book.pdfUrl || "",
+            audioUrl: LinksToServices.CloudFrontBook + book.audioUrl || "",
+            pdfUrl: LinksToServices.CloudFrontBook + book.pdfUrl || "",
             duration: book.duration || "",
             uploadDate: book.uploadDate || "",
             userId: book.userId || "",
@@ -77,6 +72,47 @@ export default function Home() {
         enabled: !auth.isLoading, // Only run query when auth is loaded
     })
 
+    // Use the delete audiobook hook
+    const { isDeleteDialogOpen, isDeleting, bookToDelete, openDeleteDialog, closeDeleteDialog, confirmDelete } =
+        useDeleteAudiobook({
+            refetchFn: refetch,
+            delayBeforeRefetch: 3000, // 3 second delay as per your original code
+        })
+
+    // Effect to refetch data when the component mounts or becomes visible
+    useEffect(() => {
+        // Refetch data when the component mounts
+        // refetch()
+
+        // Check if we need to refetch due to a redirect
+        if (typeof window !== "undefined") {
+            const shouldRefetch = sessionStorage.getItem("refetchAudiobooks") === "true"
+            if (shouldRefetch) {
+                // Clear the flag
+                sessionStorage.removeItem("refetchAudiobooks")
+                // Refetch with empty query
+                setTimeout(() => {
+                    // Reset search query and refetch
+                    setSearchQuery("")
+                    refetch()
+                }, 500)
+            } else {
+                refetch()
+            }
+        }
+
+        // Also refetch when the window regains focus (user returns to the tab)
+        const handleFocus = () => {
+            refetch()
+        }
+
+        window.addEventListener("focus", handleFocus)
+
+        return () => {
+            window.removeEventListener("focus", handleFocus)
+        }
+    }, [refetch, setSearchQuery])
+
     const handleAddBookClick = () => {
         if (auth.isAuthenticated) {
             setIsUploadModalOpen(true)
@@ -85,27 +121,56 @@ export default function Home() {
         }
     }
 
+    const updateSearchQuery = () => {
+        queryClient.invalidateQueries({ queryKey: ["audiobooks"] })
+    }
+
     const handleSearch = (query: string) => {
         setSearchQuery(query)
         // The query will automatically run due to the queryKey dependency
     }
 
     const handleRemoveBook = async (id: string) => {
-        // Implement book removal logic here when needed
-        // You could use useMutation for this
+        const bookToRemove = audiobooks.find((book: Audiobook) => book.id === id)
+        if (bookToRemove) {
+            openDeleteDialog(bookToRemove)
+        }
     }
 
     // Function to handle successful upload
     const handleUploadSuccess = () => {
         // Invalidate the current query to refetch data
-        queryClient.invalidateQueries({ queryKey: ["audiobooks"] })
+        refetch()
         setIsUploadModalOpen(false)
     }
 
     return (
         <div className="space-y-6">
+            {/* Delete Confirmation Dialog */}
+            <Dialog open={isDeleteDialogOpen} onOpenChange={closeDeleteDialog}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <AlertTriangle className="h-5 w-5 text-destructive" />
+                            Confirm Deletion
+                        </DialogTitle>
+                        <DialogDescription>
+                            Are you sure you want to remove "{bookToDelete?.title}" from library? This action cannot be undone.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <Button variant="outline" onClick={closeDeleteDialog} disabled={isDeleting}>
+                            Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={confirmDelete} disabled={isDeleting}>
+                            {isDeleting ? "Removing..." : "Yes, Remove"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             <div className="flex items-center justify-between">
-                <h1 className="text-3xl font-bold tracking-tight">Your Audiobook Library</h1>
+                <h1 className="text-3xl font-bold tracking-tight">Audiobook Library</h1>
                 <Button onClick={handleAddBookClick}>
                     <Plus className="mr-2 h-4 w-4" />
                     Add Book

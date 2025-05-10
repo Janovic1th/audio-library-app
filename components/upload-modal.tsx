@@ -19,7 +19,7 @@ import { useToast } from "@/hooks/use-toast"
 import { FileUp, Upload, BookOpen } from "lucide-react"
 import { useState, useRef } from "react"
 import { useRouter } from "next/navigation"
-import API_URLS from "@/utils/apiUrls"
+import {API_URLS} from "@/utils/apiUrls"
 import { useAuth } from "react-oidc-context"
 
 interface UploadModalProps {
@@ -49,11 +49,19 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsUploading(true)
+    if (!auth.isAuthenticated || !auth.user?.id_token) {
+      toast({
+        title: "Authentication Required",
+        description: "You must be logged in to delete audiobooks.",
+        variant: "destructive",
+      })
+      return
+    }
 
     try {
       if (coverFile) {
         const base64Image = await convertToBase64(coverFile)
-
+        const token = auth.user.id_token
         // Get user ID from auth context
         const userId = auth.user?.profile.sub || "anonymous"
 
@@ -64,7 +72,13 @@ export function UploadModal({ isOpen, onClose, onSuccess }: UploadModalProps) {
           description,
           coverFile: base64Image,
           coverType: coverFile.type,
-        })
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          }
+          })
 
         const { uploadUrl, id } = presignedUrlForUpload.data.body
 

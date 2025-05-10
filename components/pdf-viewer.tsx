@@ -66,6 +66,7 @@ export function PDFViewer({ pdfUrl, isFullscreen, onToggleFullscreen }: PDFViewe
                     src={pdfUrl}
                     className="w-full h-full bg-white"
                     title="PDF Viewer"
+                    allow="fullscreen"
                 />
             </div>
         </div>

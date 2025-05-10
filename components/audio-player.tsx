@@ -32,6 +32,7 @@ export function AudioPlayer({ audiobook, isPlaying, onPlayPause }: AudioPlayerPr
 
   // Initialize audio element
   useEffect(() => {
+    console.log(audiobook.audioUrl)
     if (!audioRef.current) return
 
     // Set initial volume
